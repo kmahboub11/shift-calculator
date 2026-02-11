@@ -1,0 +1,30 @@
+import java.util.Scanner;
+
+public class TipCalculator {
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Enter own payments total: ");
+        double ownPaymentsTotal = scanner.nextDouble();
+
+        System.out.print("Enter received tip: ");
+        double receivedTip = scanner.nextDouble();
+
+        System.out.print("Enter cash: ");
+        double cash = scanner.nextDouble();
+
+        // Step 1: subtract 14.975%
+        double afterTax = ownPaymentsTotal - (ownPaymentsTotal * 0.14975);
+
+        // Step 2: multiply by 0.05
+        double fivePercent = afterTax * 0.05;
+
+        // Step 3 & 4: add to cash then subtract received tip
+        double finalAmount = (fivePercent + cash) - receivedTip;
+
+        System.out.println("Final result: " + finalAmount);
+
+        scanner.close();
+    }
+}
