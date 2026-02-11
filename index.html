@@ -1,30 +1,209 @@
-import java.util.Scanner;
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shift Report Calculator</title>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #f4f4f4; }
+    .card { background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+    h2 { text-align: center; margin: 0 0 12px 0; }
+    input { width: 100%; padding: 12px; margin: 10px 0; font-size: 18px; box-sizing: border-box; }
+    button { width: 100%; padding: 12px; font-size: 18px; border: none; border-radius: 10px; margin-top: 10px; }
+    .primary { background: #007aff; color: white; }
+    .secondary { background: #e5e5ea; color: #111; }
+    .danger { background: #ff3b30; color: white; }
+    #result { margin-top: 12px; font-size: 20px; font-weight: bold; text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px; border-bottom: 1px solid #ddd; font-size: 14px; text-align: left; }
+    th { background: #fafafa; }
+    .row-actions button { width: auto; padding: 8px 10px; font-size: 14px; margin: 0; border-radius: 8px; }
+    .flex { display: flex; gap: 10px; }
+    .flex button { width: 100%; }
+    .muted { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
 
-public class TipCalculator {
+  <div class="card">
+    <h2>Shift Report Calculator</h2>
 
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
+    <input type="number" step="0.01" id="own" placeholder="Own Payments Total">
+    <input type="number" step="0.01" id="tip" placeholder="Received Tip">
+    <input type="number" step="0.01" id="cash" placeholder="Cash">
 
-        System.out.print("Enter own payments total: ");
-        double ownPaymentsTotal = scanner.nextDouble();
+    <button class="primary" onclick="calculate()">Calculate</button>
+    <button class="secondary" onclick="saveEntry()">Save to History</button>
 
-        System.out.print("Enter received tip: ");
-        double receivedTip = scanner.nextDouble();
+    <div id="result"></div>
+    <div class="muted" id="hint"></div>
+  </div>
 
-        System.out.print("Enter cash: ");
-        double cash = scanner.nextDouble();
+  <div class="card">
+    <div class="flex">
+      <button class="secondary" onclick="exportCSV()">Export CSV</button>
+      <button class="danger" onclick="clearAll()">Clear All</button>
+    </div>
 
-        // Step 1: subtract 14.975%
-        double afterTax = ownPaymentsTotal - (ownPaymentsTotal * 0.14975);
+    <div id="history"></div>
+  </div>
 
-        // Step 2: multiply by 0.05
-        double fivePercent = afterTax * 0.05;
+<script>
+  const TAX_RATE = 0.14975;
+  const MULTIPLIER = 0.05;
+  const STORAGE_KEY = "shift_calc_history_v1";
 
-        // Step 3 & 4: add to cash then subtract received tip
-        double finalAmount = (fivePercent + cash) - receivedTip;
+  let lastComputed = null;
 
-        System.out.println("Final result: " + finalAmount);
+  function computeFinal(ownPaymentsTotal, receivedTip, cash) {
+    const afterTax = ownPaymentsTotal * (1 - TAX_RATE);
+    const fivePercent = afterTax * MULTIPLIER;
+    return (fivePercent + cash) - receivedTip;
+  }
 
-        scanner.close();
+  function calculate() {
+    const own = parseFloat(document.getElementById("own").value) || 0;
+    const tip = parseFloat(document.getElementById("tip").value) || 0;
+    const cash = parseFloat(document.getElementById("cash").value) || 0;
+
+    const finalAmount = computeFinal(own, tip, cash);
+    lastComputed = { own, tip, cash, finalAmount };
+
+    document.getElementById("result").innerText = "Final Result: $" + finalAmount.toFixed(2);
+    document.getElementById("hint").innerText = "Tap “Save to History” to store this entry.";
+  }
+
+  function getHistory() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    try { return JSON.parse(raw); } catch { return []; }
+  }
+
+  function setHistory(items) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }
+
+  function saveEntry() {
+    // Ensure we have a computed result based on current fields
+    if (!lastComputed) {
+      calculate();
     }
-}
+
+    const { own, tip, cash, finalAmount } = lastComputed;
+
+    // Basic guard: if everything is zero, don't save
+    if (own === 0 && tip === 0 && cash === 0) {
+      document.getElementById("hint").innerText = "Enter values first.";
+      return;
+    }
+
+    const entry = {
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
+      timestamp: new Date().toISOString(),
+      own,
+      tip,
+      cash,
+      result: finalAmount
+    };
+
+    const items = getHistory();
+    items.unshift(entry); // newest first
+    setHistory(items);
+
+    document.getElementById("hint").innerText = "Saved.";
+    renderHistory();
+  }
+
+  function formatDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleString();
+  }
+
+  function deleteEntry(id) {
+    const items = getHistory().filter(x => x.id !== id);
+    setHistory(items);
+    renderHistory();
+  }
+
+  function clearAll() {
+    localStorage.removeItem(STORAGE_KEY);
+    renderHistory();
+  }
+
+  function exportCSV() {
+    const items = getHistory();
+    if (items.length === 0) return;
+
+    const header = ["Date", "OwnPaymentsTotal", "ReceivedTip", "Cash", "Result"];
+    const rows = items.map(x => [
+      formatDate(x.timestamp),
+      x.own.toFixed(2),
+      x.tip.toFixed(2),
+      x.cash.toFixed(2),
+      x.result.toFixed(2)
+    ]);
+
+    const csv = [header, ...rows]
+      .map(r => r.map(v => `"${String(v).replaceAll('"','""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "shift_history.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    URL.revokeObjectURL(url);
+  }
+
+  function renderHistory() {
+    const items = getHistory();
+
+    if (items.length === 0) {
+      document.getElementById("history").innerHTML = "<p class='muted'>No history yet. Save an entry after you calculate.</p>";
+      return;
+    }
+
+    let html = `
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Own</th>
+            <th>Tip</th>
+            <th>Cash</th>
+            <th>Result</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    for (const x of items) {
+      html += `
+        <tr>
+          <td>${formatDate(x.timestamp)}</td>
+          <td>${x.own.toFixed(2)}</td>
+          <td>${x.tip.toFixed(2)}</td>
+          <td>${x.cash.toFixed(2)}</td>
+          <td><b>$${x.result.toFixed(2)}</b></td>
+          <td class="row-actions">
+            <button class="danger" onclick="deleteEntry('${x.id}')">Delete</button>
+          </td>
+        </tr>
+      `;
+    }
+
+    html += "</tbody></table>";
+    document.getElementById("history").innerHTML = html;
+  }
+
+  // Load history on open
+  renderHistory();
+</script>
+
+</body>
+</html>
