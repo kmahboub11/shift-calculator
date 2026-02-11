@@ -31,6 +31,9 @@
     <input type="number" step="0.01" id="tip" placeholder="Received Tip">
     <input type="number" step="0.01" id="cash" placeholder="Cash">
 
+    <!-- NEW: tipout percent -->
+    <input type="number" step="0.01" id="tipoutPct" placeholder="Tipout % (ex: 5, 4, 2)" value="5">
+
     <button class="primary" onclick="calculate()">Calculate</button>
     <button class="secondary" onclick="saveEntry()">Save to History</button>
 
@@ -49,27 +52,37 @@
 
 <script>
   const TAX_RATE = 0.14975;
-  const MULTIPLIER = 0.05;
-  const STORAGE_KEY = "shift_calc_history_v1";
+  const STORAGE_KEY = "shift_calc_history_v2";
 
   let lastComputed = null;
 
-  function computeFinal(ownPaymentsTotal, receivedTip, cash) {
+  function computeFinal(ownPaymentsTotal, receivedTip, cash, tipoutPercent) {
     const afterTax = ownPaymentsTotal * (1 - TAX_RATE);
-    const fivePercent = afterTax * MULTIPLIER;
-    return (fivePercent + cash) - receivedTip;
+    const multiplier = tipoutPercent / 100.0;   // 5 -> 0.05, 4 -> 0.04, 2 -> 0.02
+    const tipoutAmount = afterTax * multiplier;
+    return (tipoutAmount + cash) - receivedTip;
   }
 
   function calculate() {
     const own = parseFloat(document.getElementById("own").value) || 0;
     const tip = parseFloat(document.getElementById("tip").value) || 0;
     const cash = parseFloat(document.getElementById("cash").value) || 0;
+    const tipoutPct = parseFloat(document.getElementById("tipoutPct").value);
 
-    const finalAmount = computeFinal(own, tip, cash);
-    lastComputed = { own, tip, cash, finalAmount };
+    if (isNaN(tipoutPct) || tipoutPct < 0) {
+      document.getElementById("hint").innerText = "Tipout % must be a valid number (ex: 5, 4, 2).";
+      return;
+    }
 
-    document.getElementById("result").innerText = "Final Result: $" + finalAmount.toFixed(2);
-    document.getElementById("hint").innerText = "Tap “Save to History” to store this entry.";
+    const finalAmount = computeFinal(own, tip, cash, tipoutPct);
+
+    lastComputed = { own, tip, cash, tipoutPct, finalAmount };
+
+    document.getElementById("result").innerText =
+      "Final Result: $" + finalAmount.toFixed(2);
+
+    document.getElementById("hint").innerText =
+      "Tipout used: " + tipoutPct.toFixed(2) + "%. Tap “Save to History” to store this entry.";
   }
 
   function getHistory() {
@@ -83,14 +96,11 @@
   }
 
   function saveEntry() {
-    // Ensure we have a computed result based on current fields
-    if (!lastComputed) {
-      calculate();
-    }
+    if (!lastComputed) calculate();
+    if (!lastComputed) return;
 
-    const { own, tip, cash, finalAmount } = lastComputed;
+    const { own, tip, cash, tipoutPct, finalAmount } = lastComputed;
 
-    // Basic guard: if everything is zero, don't save
     if (own === 0 && tip === 0 && cash === 0) {
       document.getElementById("hint").innerText = "Enter values first.";
       return;
@@ -102,11 +112,12 @@
       own,
       tip,
       cash,
+      tipoutPct,
       result: finalAmount
     };
 
     const items = getHistory();
-    items.unshift(entry); // newest first
+    items.unshift(entry);
     setHistory(items);
 
     document.getElementById("hint").innerText = "Saved.";
@@ -133,12 +144,13 @@
     const items = getHistory();
     if (items.length === 0) return;
 
-    const header = ["Date", "OwnPaymentsTotal", "ReceivedTip", "Cash", "Result"];
+    const header = ["Date", "OwnPaymentsTotal", "ReceivedTip", "Cash", "TipoutPercent", "Result"];
     const rows = items.map(x => [
       formatDate(x.timestamp),
       x.own.toFixed(2),
       x.tip.toFixed(2),
       x.cash.toFixed(2),
+      (x.tipoutPct ?? 0).toFixed(2),
       x.result.toFixed(2)
     ]);
 
@@ -163,7 +175,8 @@
     const items = getHistory();
 
     if (items.length === 0) {
-      document.getElementById("history").innerHTML = "<p class='muted'>No history yet. Save an entry after you calculate.</p>";
+      document.getElementById("history").innerHTML =
+        "<p class='muted'>No history yet. Save an entry after you calculate.</p>";
       return;
     }
 
@@ -175,6 +188,7 @@
             <th>Own</th>
             <th>Tip</th>
             <th>Cash</th>
+            <th>Tipout %</th>
             <th>Result</th>
             <th></th>
           </tr>
@@ -183,12 +197,14 @@
     `;
 
     for (const x of items) {
+      const tipout = (x.tipoutPct ?? 0).toFixed(2);
       html += `
         <tr>
           <td>${formatDate(x.timestamp)}</td>
           <td>${x.own.toFixed(2)}</td>
           <td>${x.tip.toFixed(2)}</td>
           <td>${x.cash.toFixed(2)}</td>
+          <td>${tipout}</td>
           <td><b>$${x.result.toFixed(2)}</b></td>
           <td class="row-actions">
             <button class="danger" onclick="deleteEntry('${x.id}')">Delete</button>
@@ -201,7 +217,6 @@
     document.getElementById("history").innerHTML = html;
   }
 
-  // Load history on open
   renderHistory();
 </script>
 
